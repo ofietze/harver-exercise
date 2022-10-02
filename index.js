@@ -57,6 +57,11 @@ const cli = meow(
   }
 );
 
+/**
+ * Requests two cat images from cataas.com
+ * @param {*} flags used to set custom parameters in the URL
+ * @returns The bodies of the two http responses
+ */
 async function getCatImages(flags) {
   const url = "https://cataas.com/cat/says/";
   try {
@@ -86,6 +91,12 @@ async function getCatImages(flags) {
   }
 }
 
+/**
+ * Merges the two given images into one
+ * @param {*} firstBody Http body of the first image
+ * @param {*} secondBody Http body of the second image
+ * @param {*} width Width of the images used to align them next to each other
+ */
 async function mergeImages(firstBody, secondBody, width) {
   const img = await mergeImg([
     { src: Buffer.from(firstBody, "binary"), x: 0, y: 0 },
