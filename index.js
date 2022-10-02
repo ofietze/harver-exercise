@@ -1,57 +1,122 @@
-let { writeFile } = require('fs');
-let { join } = require('path');
-let request = require('request');
-let mergeImg = require('merge-img');
-let argv = require('minimist')(process.argv.slice(2));
+import { writeFile } from "fs";
+import mergeImg from "merge-img";
+import meow from "meow"; // switched library for easier cl flag definition
+import got from "got"; //switched to non deprecated library for http requests
 
-let {
-    greeting = 'Hello', who = 'You',
-    width = 400, height = 500, color = 'Pink', size = 100,
-} = argv;
+const cli = meow(
+  `
+  Get two cat pictures with a custom message.
+	Usage
+	  $ index.js <input>
 
-let firstReq = {
-// https://cataas.com/cat/says/Hi%20There?width=500&amp;height=800&amp;c=Cyan&amp;s=150
-url: 'https://cataas.com/cat/says/' + greeting + '?width=' + width + '&height=' + height + '&color' + color + '&s=' + size, encoding: 'binary'
-};
+	Options
+	  --greeting, -g  Include a greeting
+    --who, -o  Who to greet 
+    --width, -w  Width of the output picture
+    --height, -h Height of the output picture
+    --color, -c  Text color of the greeting
+    --size, -s  Text size of the greeting
 
-let secondReq = {
-    url: 'https://cataas.com/cat/says/' + who + '?width=' + width + '&height=' + height + '&color' + color + '&s=' + size, encoding: 'binary'
-};
+	Examples
+	  $ index.js -g Wassup -0 me
+`,
+  {
+    importMeta: import.meta,
+    flags: {
+      greeting: {
+        type: "string",
+        default: "Hello",
+        alias: "g",
+      },
+      who: {
+        type: "string",
+        default: "You",
+        alias: "o",
+      },
+      width: {
+        type: "number",
+        default: 400,
+        alias: "w",
+      },
+      height: {
+        type: "number",
+        default: 500,
+        alias: "h",
+      },
+      color: {
+        type: "string",
+        default: "Pink",
+        alias: "c",
+      },
+      size: {
+        type: "number",
+        default: 100,
+        alias: "s",
+      },
+    },
+  }
+);
 
-request.get(firstReq, (err, res, firstBody) => { 
-    if(err) {
-        console.log(err);
-        return; 
+async function getCatImages(flags) {
+  const url = "https://cataas.com/cat/says/";
+  try {
+    const catOne = await got(url.concat(flags.greeting), {
+      searchParams: {
+        height: flags.height,
+        width: flags.width,
+        color: flags.color,
+        size: flags.size,
+      },
+    });
+    console.log("Cat one: Received response with status: " + catOne.statusCode);
+
+    const catTwo = await got(url.concat(flags.who), {
+      searchParams: {
+        height: flags.height,
+        width: flags.width,
+        color: flags.color,
+        size: flags.size,
+      },
+    });
+    console.log("Cat two: Received response with status: " + catTwo.statusCode);
+
+    return { bodyOne: catOne.rawBody, bodyTwo: catTwo.rawBody };
+  } catch (error) {
+    console.log("Error getting images", error);
+  }
+}
+
+async function mergeImages(firstBody, secondBody, width) {
+  const img = await mergeImg([
+    { src: Buffer.from(firstBody, "binary"), x: 0, y: 0 },
+    { src: Buffer.from(secondBody, "binary"), x: width, y: 0 },
+  ]).catch((error) => {
+    console.log("Error merging images", error);
+  });
+
+  const fileOut = process.cwd().concat(`/cat-card.jpg`);
+  var buffer;
+  img.getBuffer("image/jpeg", (err, buf) => {
+    if (err) {
+      console.log(err);
     }
-    
-    console.log('Received response with status:' + res.statusCode);
-    
-    request.get(secondReq, (err, res, secondBody) => { 
-        if(err) {
-            console.log(err);
-            return; 
-        }
-        
-        console.log('Received response with status:' + res.statusCode); 
+    buffer = buf;
+  });
 
-        mergeImg([ 
-          { src: new Buffer(firstBody, 'binary'), x: 0, y:0 }, 
-          { src: new Buffer(secondBody, 'binary'), x: width, y: 0 }
-        ]).then(img => {
-          img.getBuffer('image/jpeg', (err, buffer) => {
-                if (err) {
-                  console.log(err)
-                }
+  if (buffer) {
+    writeFile(fileOut, buffer, "binary", (err) => {
+      if (err) {
+        console.log(err);
+        return;
+      }
+      console.log("The file was saved!");
+    });
+  }
+}
 
-                const fileOut = join(process.cwd(), `/cat-card.jpg`);
-                
-                writeFile(fileOut, buffer, 'binary', (err) => { if(err) {
-                    console.log(err);
-                    return; 
-                }
-                
-                console.log("The file was saved!"); });
-              });
-            }); 
-        });
-});
+async function main(cli) {
+  const { bodyOne, bodyTwo } = await getCatImages(cli.flags);
+  await mergeImages(bodyOne, bodyTwo, cli.flags.width);
+}
+
+main(cli);
